@@ -7,7 +7,9 @@ public protocol CodexSessionScanning {
 public struct CodexSessionScanner: CodexSessionScanning {
     private let indexURL: URL
     private let sessionsRootURL: URL
+    private let logsDatabaseURL: URL
     private let lookback: TimeInterval
+    private let activityWindow: TimeInterval
     private let maxSessions: Int
     private let now: () -> Date
 
@@ -18,45 +20,52 @@ public struct CodexSessionScanner: CodexSessionScanning {
         sessionsRootURL: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".codex")
             .appendingPathComponent("sessions", isDirectory: true),
+        logsDatabaseURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex")
+            .appendingPathComponent("logs_2.sqlite"),
         lookback: TimeInterval = 60 * 60 * 24 * 4,
+        activityWindow: TimeInterval = 60 * 60 * 36,
         maxSessions: Int = 8,
         now: @escaping () -> Date = Date.init
     ) {
         self.indexURL = indexURL
         self.sessionsRootURL = sessionsRootURL
+        self.logsDatabaseURL = logsDatabaseURL
         self.lookback = lookback
+        self.activityWindow = activityWindow
         self.maxSessions = max(1, maxSessions)
         self.now = now
     }
 
     public func scan() throws -> [DevelopmentThreadDraft] {
-        let entries = try recentManualEntries()
-        let sessionFiles = sessionFilesByID(for: Set(entries.map(\.id)))
+        let metadataByID = try sessionMetadataByID()
+        let activities = try recentThreadActivities(metadataByID: metadataByID)
+        let sessionFiles = sessionFilesByID(for: Set(activities.map(\.id)))
 
-        return entries.map { entry in
-            let sessionURL = sessionFiles[entry.id]
+        return activities.map { activity in
+            let sessionURL = sessionFiles[activity.id]
             let cwd = sessionURL.flatMap(readWorkingDirectory)
             let tail = sessionURL.flatMap(readTail) ?? ""
-            let status = status(fromTail: tail)
+            let status = status(for: activity, tail: tail)
 
             return DevelopmentThreadDraft(
-                title: entry.threadName,
+                title: activity.threadName,
                 projectName: projectName(from: cwd),
-                goal: "继续推进 \(entry.threadName)",
+                goal: "继续推进 \(activity.threadName)",
                 nextAction: nextAction(for: status),
                 status: status,
-                accountAlias: ""
+                accountAlias: "",
+                observedAt: activity.latestActivityAt
             )
         }
     }
 
-    private func recentManualEntries() throws -> [SessionIndexEntry] {
+    private func sessionMetadataByID() throws -> [String: SessionIndexEntry] {
         guard FileManager.default.fileExists(atPath: indexURL.path) else {
-            return []
+            return [:]
         }
 
         let body = try String(contentsOf: indexURL, encoding: .utf8)
-        let cutoff = now().addingTimeInterval(-lookback)
         var latestByID: [String: SessionIndexEntry] = [:]
 
         for line in body.split(whereSeparator: \.isNewline) {
@@ -69,8 +78,7 @@ public struct CodexSessionScanner: CodexSessionScanning {
 
             let threadName = rawEntry.threadName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !threadName.isEmpty,
-                  !isAutomationThreadName(threadName),
-                  updatedAt >= cutoff
+                  !isAutomationThreadName(threadName)
             else {
                 continue
             }
@@ -88,7 +96,97 @@ public struct CodexSessionScanner: CodexSessionScanning {
             latestByID[entry.id] = entry
         }
 
-        return latestByID.values
+        return latestByID
+    }
+
+    private func recentThreadActivities(metadataByID: [String: SessionIndexEntry]) throws -> [SessionActivity] {
+        if let activities = try recentSubmittedActivities(metadataByID: metadataByID),
+           !activities.isEmpty {
+            return activities
+        }
+
+        return recentManualEntries(metadataByID: metadataByID).map { entry in
+            SessionActivity(
+                id: entry.id,
+                threadName: entry.threadName,
+                latestActivityAt: entry.updatedAt,
+                latestState: .submitted,
+                source: .fallbackIndex
+            )
+        }
+    }
+
+    private func recentSubmittedActivities(
+        metadataByID: [String: SessionIndexEntry]
+    ) throws -> [SessionActivity]? {
+        guard FileManager.default.fileExists(atPath: logsDatabaseURL.path) else {
+            return nil
+        }
+
+        let cutoffSeconds = Int(now().addingTimeInterval(-activityWindow).timeIntervalSince1970)
+        let sql = """
+        SELECT
+            thread_id,
+            MAX(CASE
+                WHEN feedback_log_body LIKE '%submission_dispatch%'
+                 AND feedback_log_body NOT LIKE '%op.dispatch.shutdown%'
+                THEN ts * 1000000000 + ts_nanos
+            END) AS latest_submission_key,
+            MAX(CASE
+                WHEN feedback_log_body LIKE '%phase: Some(FinalAnswer)%'
+                  OR feedback_log_body LIKE '%"task_complete"%'
+                  OR feedback_log_body LIKE '%"final_answer"%'
+                THEN ts * 1000000000 + ts_nanos
+            END) AS latest_completion_key
+        FROM logs
+        WHERE thread_id <> ''
+          AND ts >= \(cutoffSeconds)
+          AND feedback_log_body IS NOT NULL
+          AND (
+            feedback_log_body LIKE '%submission_dispatch%'
+            OR feedback_log_body LIKE '%phase: Some(FinalAnswer)%'
+            OR feedback_log_body LIKE '%"task_complete"%'
+            OR feedback_log_body LIKE '%"final_answer"%'
+          )
+        GROUP BY thread_id
+        HAVING latest_submission_key IS NOT NULL
+        ORDER BY latest_submission_key DESC;
+        """
+
+        let rows = try runSQLiteJSONQuery(sql)
+
+        return rows
+            .sorted { lhs, rhs in
+                if lhs.latestSubmissionKey != rhs.latestSubmissionKey {
+                    return lhs.latestSubmissionKey > rhs.latestSubmissionKey
+                }
+
+                return lhs.threadID.localizedStandardCompare(rhs.threadID) == .orderedAscending
+            }
+            .compactMap { row in
+                guard let metadata = metadataByID[row.threadID],
+                      let latestActivityAt = row.latestActivityAt
+                else {
+                    return nil
+                }
+
+                return SessionActivity(
+                    id: row.threadID,
+                    threadName: metadata.threadName,
+                    latestActivityAt: latestActivityAt,
+                    latestState: row.latestState,
+                    source: .submittedRecently
+                )
+            }
+            .prefix(maxSessions)
+            .map { $0 }
+    }
+
+    private func recentManualEntries(metadataByID: [String: SessionIndexEntry]) -> [SessionIndexEntry] {
+        let cutoff = now().addingTimeInterval(-lookback)
+
+        return metadataByID.values
+            .filter { $0.updatedAt >= cutoff }
             .sorted { lhs, rhs in
                 if lhs.updatedAt != rhs.updatedAt {
                     return lhs.updatedAt > rhs.updatedAt
@@ -186,7 +284,30 @@ public struct CodexSessionScanner: CodexSessionScanning {
         return body
     }
 
-    private func status(fromTail tail: String) -> ThreadStatus {
+    private func status(for activity: SessionActivity, tail: String) -> ThreadStatus {
+        let tailStatus = statusFromRecentTail(tail)
+
+        if activity.source == .submittedRecently,
+           tailStatus == .quotaBlocked {
+            return .quotaBlocked
+        }
+
+        if activity.source == .submittedRecently {
+            switch activity.latestState {
+            case .completed:
+                return .needsReview
+            case .submitted:
+                if tailStatus == .needsReview {
+                    return .active
+                }
+                return tailStatus
+            }
+        }
+
+        return tailStatus
+    }
+
+    private func statusFromRecentTail(_ tail: String) -> ThreadStatus {
         var sawCompletion = false
 
         for line in tail.split(whereSeparator: \.isNewline).reversed() {
@@ -210,6 +331,35 @@ public struct CodexSessionScanner: CodexSessionScanning {
         }
 
         return .active
+    }
+
+    private func runSQLiteJSONQuery(_ sql: String) throws -> [SQLiteSubmissionRow] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = ["-json", logsDatabaseURL.path, sql]
+
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        try process.run()
+        process.waitUntilExit()
+
+        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+        let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+
+        guard process.terminationStatus == 0 else {
+            let stderrText = String(data: errorData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? "unknown sqlite error"
+            throw CodexSessionScannerError.logQueryFailed(stderrText)
+        }
+
+        if outputData.isEmpty {
+            return []
+        }
+
+        return try JSONDecoder().decode([SQLiteSubmissionRow].self, from: outputData)
     }
 
     private func isActiveEvent(line: String) -> Bool {
@@ -289,6 +439,17 @@ public struct CodexSessionScanner: CodexSessionScanning {
     }
 }
 
+public enum CodexSessionScannerError: LocalizedError {
+    case logQueryFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .logQueryFailed(let message):
+            "无法读取 Codex 本地日志：\(message)"
+        }
+    }
+}
+
 private struct RawSessionIndexEntry: Decodable {
     let id: String
     let threadName: String
@@ -305,4 +466,53 @@ private struct SessionIndexEntry {
     let id: String
     let threadName: String
     let updatedAt: Date
+}
+
+private struct SessionActivity {
+    let id: String
+    let threadName: String
+    let latestActivityAt: Date
+    let latestState: ActivityState
+    let source: ActivitySource
+}
+
+private enum ActivitySource {
+    case submittedRecently
+    case fallbackIndex
+}
+
+private enum ActivityState {
+    case submitted
+    case completed
+}
+
+private struct SQLiteSubmissionRow: Decodable {
+    let threadID: String
+    let latestSubmissionKey: Int64
+    let latestCompletionKey: Int64?
+
+    private enum CodingKeys: String, CodingKey {
+        case threadID = "thread_id"
+        case latestSubmissionKey = "latest_submission_key"
+        case latestCompletionKey = "latest_completion_key"
+    }
+
+    var latestActivityAt: Date? {
+        let key = max(latestSubmissionKey, latestCompletionKey ?? 0)
+        guard key > 0 else {
+            return nil
+        }
+
+        let seconds = TimeInterval(key / 1_000_000_000)
+        let nanos = TimeInterval(key % 1_000_000_000) / 1_000_000_000
+        return Date(timeIntervalSince1970: seconds + nanos)
+    }
+
+    var latestState: ActivityState {
+        guard let latestCompletionKey, latestCompletionKey >= latestSubmissionKey else {
+            return .submitted
+        }
+
+        return .completed
+    }
 }

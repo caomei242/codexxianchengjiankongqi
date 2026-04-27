@@ -63,15 +63,23 @@ struct ContentView: View {
                 emptyState
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(store.visibleThreads) { thread in
-                            ThreadRow(
-                                thread: thread,
-                                onEdit: { editorMode = .edit(thread) },
-                                onCopy: { copyResumePrompt(for: thread) },
-                                onClose: { store.closeThread(id: thread.id) },
-                                onStatusChange: { store.updateStatus(id: thread.id, status: $0) }
-                            )
+                    LazyVStack(spacing: 18) {
+                        ForEach(store.visibleProjectSections, id: \.projectName) { section in
+                            VStack(alignment: .leading, spacing: 10) {
+                                ProjectSectionHeader(section: section)
+
+                                LazyVStack(spacing: 10) {
+                                    ForEach(section.threads) { thread in
+                                        ThreadRow(
+                                            thread: thread,
+                                            onEdit: { editorMode = .edit(thread) },
+                                            onCopy: { copyResumePrompt(for: thread) },
+                                            onClose: { store.closeThread(id: thread.id) },
+                                            onStatusChange: { store.updateStatus(id: thread.id, status: $0) }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                     .padding(18)
@@ -186,5 +194,29 @@ private struct SummaryPill: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 7)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct ProjectSectionHeader: View {
+    let section: ThreadProjectSection
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Label(section.projectName, systemImage: "folder.fill")
+                .font(.headline)
+
+            Text("\(section.threads.count) 条")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.quaternary, in: Capsule())
+
+            Spacer()
+
+            Text(section.latestUpdatedAt.formatted(date: .omitted, time: .shortened))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }

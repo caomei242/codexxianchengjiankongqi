@@ -55,6 +55,10 @@ public final class ThreadRadarStore {
         visibleThreads.first
     }
 
+    public var visibleProjectSections: [ThreadProjectSection] {
+        ThreadProjectSection.makeSections(from: visibleThreads)
+    }
+
     public func createThread(from draft: DevelopmentThreadDraft) {
         guard draft.canSave else {
             errorMessage = "线程标题、项目、目标和下一步都不能为空。"
@@ -76,8 +80,8 @@ public final class ThreadRadarStore {
                 .filter(\.canSave)
                 .enumerated()
                 .map { offset, draft in
-                    let orderedTimestamp = timestamp.addingTimeInterval(-Double(offset))
-                    return draft.makeThread(now: orderedTimestamp)
+                    let fallbackTimestamp = timestamp.addingTimeInterval(-Double(offset))
+                    return draft.makeThread(now: fallbackTimestamp)
                 }
 
             guard !scannedThreads.isEmpty else {

@@ -18,14 +18,34 @@ struct RadarMenuView: View {
                 compactEmptyState
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(store.visibleThreads) { thread in
-                            CompactThreadRow(
-                                thread: thread,
-                                onEdit: { editorMode = .edit(thread) },
-                                onCopy: { copyResumePrompt(for: thread) },
-                                onClose: { store.closeThread(id: thread.id) }
-                            )
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(store.visibleProjectSections, id: \.projectName) { section in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Label(section.projectName, systemImage: "folder.fill")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+
+                                    Text("\(section.threads.count)")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(.quaternary, in: Capsule())
+                                }
+
+                                LazyVStack(spacing: 8) {
+                                    ForEach(section.threads) { thread in
+                                        CompactThreadRow(
+                                            thread: thread,
+                                            onEdit: { editorMode = .edit(thread) },
+                                            onCopy: { copyResumePrompt(for: thread) },
+                                            onClose: { store.closeThread(id: thread.id) }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                     .padding(12)

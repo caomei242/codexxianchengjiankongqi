@@ -97,7 +97,8 @@ struct ThreadRadarStoreTests {
                 projectName: "个人--小开发",
                 goal: "继续推进 codex线程监控器",
                 nextAction: "回到线程确认最后结果，决定收口或继续。",
-                status: .needsReview
+                status: .needsReview,
+                observedAt: Date(timeIntervalSince1970: 88)
             ),
         ])
 
@@ -105,8 +106,8 @@ struct ThreadRadarStoreTests {
 
         #expect(refreshedCount == 1)
         #expect(store.records.map(\.title) == ["已收口线程", "codex线程监控器"])
-        #expect(store.records.last?.createdAt == now)
-        #expect(store.records.last?.updatedAt == now)
+        #expect(store.records.last?.createdAt == Date(timeIntervalSince1970: 88))
+        #expect(store.records.last?.updatedAt == Date(timeIntervalSince1970: 88))
         #expect(repository.savedRecords.last?.map(\.title) == ["已收口线程", "codex线程监控器"])
         #expect(markdownSync.lastSyncedRecords?.map(\.title) == ["已收口线程", "codex线程监控器"])
     }

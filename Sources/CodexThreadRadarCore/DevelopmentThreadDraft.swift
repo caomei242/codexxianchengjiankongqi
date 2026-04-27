@@ -7,6 +7,7 @@ public struct DevelopmentThreadDraft: Equatable, Sendable {
     public var nextAction: String
     public var status: ThreadStatus
     public var accountAlias: String
+    public var observedAt: Date?
 
     public init(
         title: String = "",
@@ -14,7 +15,8 @@ public struct DevelopmentThreadDraft: Equatable, Sendable {
         goal: String = "",
         nextAction: String = "",
         status: ThreadStatus = .active,
-        accountAlias: String = ""
+        accountAlias: String = "",
+        observedAt: Date? = nil
     ) {
         self.title = title
         self.projectName = projectName
@@ -22,6 +24,7 @@ public struct DevelopmentThreadDraft: Equatable, Sendable {
         self.nextAction = nextAction
         self.status = status
         self.accountAlias = accountAlias
+        self.observedAt = observedAt
     }
 
     public init(thread: DevelopmentThread) {
@@ -41,7 +44,8 @@ public struct DevelopmentThreadDraft: Equatable, Sendable {
     }
 
     public func makeThread(id: UUID = UUID(), now: Date) -> DevelopmentThread {
-        DevelopmentThread(
+        let timestamp = observedAt ?? now
+        return DevelopmentThread(
             id: id,
             title: normalizedTitle,
             projectName: normalizedProjectName,
@@ -49,14 +53,15 @@ public struct DevelopmentThreadDraft: Equatable, Sendable {
             nextAction: normalizedNextAction,
             status: status,
             accountAlias: normalizedAccountAlias,
-            createdAt: now,
-            updatedAt: now,
-            closedAt: status == .closed ? now : nil
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            closedAt: status == .closed ? timestamp : nil
         )
     }
 
     public func updating(_ thread: DevelopmentThread, now: Date) -> DevelopmentThread {
-        DevelopmentThread(
+        let timestamp = observedAt ?? now
+        return DevelopmentThread(
             id: thread.id,
             title: normalizedTitle,
             projectName: normalizedProjectName,
@@ -65,8 +70,8 @@ public struct DevelopmentThreadDraft: Equatable, Sendable {
             status: status,
             accountAlias: normalizedAccountAlias,
             createdAt: thread.createdAt,
-            updatedAt: now,
-            closedAt: status == .closed ? (thread.closedAt ?? now) : nil
+            updatedAt: timestamp,
+            closedAt: status == .closed ? (thread.closedAt ?? timestamp) : nil
         )
     }
 

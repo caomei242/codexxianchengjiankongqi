@@ -13,13 +13,24 @@ struct ThreadRow: View {
             HStack(alignment: .top, spacing: 10) {
                 statusDot
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 8) {
+                        ProjectBadge(projectName: thread.projectName)
+
+                        if let accountAlias = thread.accountAlias, !accountAlias.isEmpty {
+                            Label(accountAlias, systemImage: "person.crop.circle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+
                     HStack(spacing: 8) {
                         Text(thread.title)
                             .font(.headline)
                             .lineLimit(1)
 
-                        StatusBadge(status: thread.status)
+                        StatusBadge(status: thread.status, emphasizedLabel: thread.status == .needsReview ? "刚完成" : nil)
                     }
 
                     Text(thread.goal)
@@ -63,10 +74,7 @@ struct ThreadRow: View {
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Label(thread.projectName, systemImage: "folder")
-                if let accountAlias = thread.accountAlias, !accountAlias.isEmpty {
-                    Label(accountAlias, systemImage: "person.crop.circle")
-                }
+                Label(statusFootnote, systemImage: statusFootnoteIcon)
                 Spacer()
                 Text(thread.updatedAt.formatted(date: .omitted, time: .shortened))
             }
@@ -90,6 +98,34 @@ struct ThreadRow: View {
         )
     }
 
+    private var statusFootnote: String {
+        switch thread.status {
+        case .active:
+            "正在跑"
+        case .needsReview:
+            "刚完成"
+        default:
+            thread.status.label
+        }
+    }
+
+    private var statusFootnoteIcon: String {
+        switch thread.status {
+        case .active:
+            "play.circle"
+        case .needsReview:
+            "checkmark.circle"
+        case .quotaBlocked:
+            "exclamationmark.octagon"
+        case .waitingForConfirmation:
+            "person.crop.circle.badge.questionmark"
+        case .readyToClose:
+            "tray"
+        case .closed:
+            "archivebox"
+        }
+    }
+
     private var statusDot: some View {
         Circle()
             .fill(color(for: thread.status))
@@ -106,6 +142,8 @@ struct CompactThreadRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            ProjectBadge(projectName: thread.projectName)
+
             HStack(spacing: 8) {
                 Circle()
                     .fill(color(for: thread.status))
@@ -117,7 +155,7 @@ struct CompactThreadRow: View {
 
                 Spacer()
 
-                StatusBadge(status: thread.status)
+                StatusBadge(status: thread.status, emphasizedLabel: thread.status == .needsReview ? "刚完成" : nil)
             }
 
             Text(thread.nextAction)
@@ -126,7 +164,7 @@ struct CompactThreadRow: View {
                 .lineLimit(2)
 
             HStack {
-                Text(thread.projectName)
+                Label(thread.status == .needsReview ? "刚完成" : thread.status.label, systemImage: thread.status == .needsReview ? "checkmark.circle" : "circle.fill")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -159,14 +197,29 @@ struct CompactThreadRow: View {
 
 struct StatusBadge: View {
     let status: ThreadStatus
+    var emphasizedLabel: String? = nil
 
     var body: some View {
-        Text(status.label)
+        Text(emphasizedLabel ?? status.label)
             .font(.caption.weight(.semibold))
             .foregroundStyle(color(for: status))
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(color(for: status).opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+}
+
+private struct ProjectBadge: View {
+    let projectName: String
+
+    var body: some View {
+        Label(projectName, systemImage: "folder")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.quaternary, in: Capsule())
     }
 }
 

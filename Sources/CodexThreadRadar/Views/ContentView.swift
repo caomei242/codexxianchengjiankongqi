@@ -88,16 +88,24 @@ struct ContentView: View {
                     .textFieldStyle(.roundedBorder)
 
                 Button {
-                    editorMode = .create
+                    store.refreshFromCodexSessions()
                 } label: {
-                    Label("捕获当前线程", systemImage: "plus")
+                    Label("记录当前线程状态", systemImage: "arrow.clockwise.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("t", modifiers: [.command, .shift])
+
+                Button {
+                    editorMode = .create
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.bordered)
+                .help("手动新增线程")
             }
 
             HStack {
-                Label("⌘⇧T 捕获 · ⌘⇧R 复制首条续接", systemImage: "keyboard")
+                Label("⌘⇧T 记录 · ⌘⇧R 复制首条续接", systemImage: "keyboard")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -123,14 +131,14 @@ struct ContentView: View {
             Text("没有未收口线程")
                 .font(.title3.weight(.semibold))
 
-            Text("按 ⌘⇧T 捕获当前开发线程，写清楚目标和下一步。")
+            Text("点击记录后，会从本机 Codex 会话生成当前开发线程列表。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
             Button {
-                editorMode = .create
+                store.refreshFromCodexSessions()
             } label: {
-                Label("捕获当前线程", systemImage: "plus")
+                Label("记录当前线程状态", systemImage: "arrow.clockwise.circle.fill")
             }
             .buttonStyle(.borderedProminent)
         }

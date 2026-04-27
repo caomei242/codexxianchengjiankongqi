@@ -57,12 +57,20 @@ struct RadarMenuView: View {
                 Spacer()
 
                 Button {
+                    store.refreshFromCodexSessions()
+                } label: {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .help("记录当前线程状态")
+
+                Button {
                     editorMode = .create
                 } label: {
                     Image(systemName: "plus")
                 }
-                .buttonStyle(.borderedProminent)
-                .help("捕获当前线程")
+                .buttonStyle(.bordered)
+                .help("手动新增线程")
             }
 
             HStack(spacing: 8) {
@@ -97,8 +105,8 @@ struct RadarMenuView: View {
                 .foregroundStyle(.secondary)
             Text("当前没有未收口线程")
                 .font(.callout.weight(.semibold))
-            Button("捕获当前线程") {
-                editorMode = .create
+            Button("记录当前线程状态") {
+                store.refreshFromCodexSessions()
             }
             .buttonStyle(.borderedProminent)
         }
@@ -108,7 +116,7 @@ struct RadarMenuView: View {
 
     private var footer: some View {
             HStack {
-            Label("⌘⇧T 捕获 · ⌘⇧R 复制首条", systemImage: "keyboard")
+            Label("⌘⇧T 记录 · ⌘⇧R 复制首条", systemImage: "keyboard")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 

@@ -14,11 +14,16 @@ struct CodexThreadRadarApp: App {
         .defaultSize(width: 920, height: 680)
         .commands {
             CommandMenu("线程监控器") {
-                Button("捕获当前线程") {
-                    NotificationCenter.default.post(name: .showCreateThreadSheet, object: nil)
+                Button("记录当前线程状态") {
+                    store.refreshFromCodexSessions()
                     NSApp.activate(ignoringOtherApps: true)
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
+
+                Button("手动新增线程") {
+                    NotificationCenter.default.post(name: .showCreateThreadSheet, object: nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
 
                 Button("复制首条续接提示") {
                     copyFirstResumePrompt()

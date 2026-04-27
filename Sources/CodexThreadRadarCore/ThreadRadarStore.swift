@@ -66,6 +66,37 @@ public final class ThreadRadarStore {
         persist(generatedAt: timestamp)
     }
 
+    @discardableResult
+    public func refreshFromCodexSessions(
+        scanner: any CodexSessionScanning = CodexSessionScanner()
+    ) -> Int {
+        do {
+            let timestamp = now()
+            let scannedThreads = try scanner.scan()
+                .filter(\.canSave)
+                .enumerated()
+                .map { offset, draft in
+                    let orderedTimestamp = timestamp.addingTimeInterval(-Double(offset))
+                    return draft.makeThread(now: orderedTimestamp)
+                }
+
+            guard !scannedThreads.isEmpty else {
+                errorMessage = "没有扫描到当前 Codex 线程。"
+                return 0
+            }
+
+            let closedThreads = records.filter { $0.status == .closed }
+
+            records = closedThreads + scannedThreads
+            persist(generatedAt: timestamp)
+
+            return scannedThreads.count
+        } catch {
+            errorMessage = "无法扫描 Codex 线程：\(error.localizedDescription)"
+            return 0
+        }
+    }
+
     public func updateThread(id: UUID, from draft: DevelopmentThreadDraft) {
         guard draft.canSave else {
             errorMessage = "线程标题、项目、目标和下一步都不能为空。"
